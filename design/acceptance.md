@@ -11,6 +11,13 @@
 
 ## B. Repository 列表
 
+- [ ] 每次冷启动应用并恢复有效登录态后，自动向 GitHub 发起一次 repository 全量分页刷新。
+- [ ] 每次新登录成功后自动刷新一次 repository 列表。
+- [ ] Repository List 页面存在显式“刷新”按钮。
+- [ ] 手动刷新实际调用 GitHub API，不得只重载本地缓存。
+- [ ] 刷新时 UI 有明确 loading/refreshing 状态且不冻结。
+- [ ] 刷新失败时允许显示旧缓存，但必须标记 stale，并显示最后成功刷新时间。
+- [ ] 刷新成功后新增/删除/权限变化的 repo 能正确反映。
 - [ ] 能分页读取当前授权范围内 repo。
 - [ ] public/private 都能正确显示。
 - [ ] archived 状态正确。
