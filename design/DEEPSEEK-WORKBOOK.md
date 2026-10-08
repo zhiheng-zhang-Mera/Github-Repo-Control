@@ -116,7 +116,7 @@ hostname / OS / arch / machine_id-short
 Runner
 Registered / Online / Offline / Busy
 
-Roles
+Roles — All available roles
 [ ] General
 [ ] CI
 [ ] Build
@@ -131,25 +131,50 @@ Active / Standby / Disabled / Quarantined
 [Preview Changes]
 ```
 
-角色必须支持多选。
+角色必须支持多选，但只能从 Codex/Core 提供的 Role Catalog 渲染。
+
+硬要求：
+
+- 不允许 TextBox 输入 role。
+- 不允许“Add custom role”。
+- 不允许用户直接编辑 GitHub label。
+- 不要在 UI 里复制一份独立角色清单作为业务真值；显示项来自 Role Catalog/service contract。
+- 当前版本所有可选角色必须完整显示，不能藏在需要手动键入名称才能找到的入口。
 
 ## D4 — 冲突交互
 
-用户选择冲突组合时立即显示本地冲突，但不要自行写另一套规则。
+**正常 UI 不允许冲突组合实际形成。**
 
-例如：
+DeepSeek 必须从 Core 的 RoleConflictEngine/Role Catalog 获取可选性，而不是自行维护一套冲突规则。
+
+示例：
 
 ```text
-☑ Dev
-☑ Verify
+用户勾选 Dev
 
-无法应用：
-Verify 要求独立验证，不能与同仓库 Dev 同时存在。
+☑ Dev
+☐ Verify   [disabled]
+            与 Dev 冲突：Verify 要求独立验证
 ```
 
-按钮进入 disabled 状态。
+反向：
 
-同时提供“取消 Verify”或“取消 Dev”的纯 UI 快捷操作；不能自动替用户决定。
+```text
+用户勾选 Verify
+
+☐ Dev      [disabled]
+☑ Verify
+☐ Repair   [disabled]
+```
+
+要求：
+
+- 冲突项继续显示在“所有可选角色”列表中，但置灰/不可点击，不能直接隐藏。
+- disabled 项旁提供简短原因或 tooltip。
+- 取消冲突来源角色后，应立即恢复可选。
+- 不允许自动取消用户已经选中的其它角色来完成新选择。
+- Core 返回 InvalidRemoteRoleState 时，显示“远端存在非法角色组合”，要求用户重新选择合法集合后 Preview/Apply 修复。
+- Apply/Preview 层仍再次验证；UI 禁用不是唯一安全边界。
 
 ## D5 — Apply Preview
 
@@ -226,10 +251,11 @@ DeepSeek 不仅做 UI，还必须针对核心做 adversarial review：
 2. token 是否可能进入 log。
 3. Apply 是否会删除非 GRC labels。
 4. stale remote state 是否被覆盖。
-5. Verify/Dev 冲突是否能通过 API 旁路。
-6. 两 repo runner instance 是否隔离。
-7. 未授权 repo 是否错误调用 admin API。
-8. logout 后旧 token 是否仍可被 service 使用。
+5. Verify/Dev 冲突是否能通过 UI、ViewModel、AssignmentService 或 API 旁路。
+6. 是否存在隐藏的自由文本/custom role/custom label 入口。
+7. 两 repo runner instance 是否隔离。
+8. 未授权 repo 是否错误调用 admin API。
+9. logout 后旧 token 是否仍可被 service 使用。
 
 发现问题提交明确 bug / fix commit，不要仅写评论。
 
@@ -256,8 +282,12 @@ Launch
 再完成冲突案例：
 
 ```text
-Dev + Verify
-→ blocked before GitHub write
+Select Dev
+→ Verify immediately disabled
+→ cannot construct Dev + Verify in UI
+
+Bypass UI in test
+→ Core rejects Dev + Verify before GitHub write
 ```
 
 ## DeepSeek 终验报告
