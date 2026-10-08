@@ -41,19 +41,27 @@ Windows 为首要验收平台；接口层必须保留 Linux/macOS 实现边界�
 
 ## 3. 登录
 
-首选 GitHub App / Device Flow。
+第一阶段使用 **GitHub OAuth App Device Flow**，因为目标是用户登录自己的 GitHub 账户后直接枚举该账户可访问的仓库，而不是让每个被管理项目安装一个控制组件。
+
+要求：
+
+- Device Flow 只需要公开的 client id，禁止把 client secret 打包进桌面应用。
+- 为读取私有仓库与执行 repository-level runner 管理，申请满足 GitHub API 要求的最小 OAuth scopes；首版以 `repo` 为基线，并在 UI 中明确展示授权范围。
+- 优先使用可过期 access token，并安全保存 refresh token；如果施工时 GitHub 的当前 OAuth 能力发生变化，以官方文档的当前稳定方案为准。
+- 所有 token 进入 OS secure credential store。
 
 桌面应用启动时：
 
 1. 若无有效登录态，显示“登录 GitHub”。
 2. 使用 Device Flow 打开 GitHub 验证。
-3. 获取用户授权后读取账户与可访问 repository。
-4. token 写入系统安全凭据存储。
-5. UI 显示当前登录账户、授权范围与权限不足的仓库。
+3. 获取用户授权后读取当前账户。
+4. 通过 authenticated-user repositories API 分页读取该账户当前可访问、且授权 scope 允许访问的全部 repository。
+5. token 写入系统安全凭据存储。
+6. UI 显示当前登录账户、repo 总数，以及每个 repo 当前权限。
 
 登录模块必须允许 logout，并在 logout 后清除本地凭据和内存中的 token。
 
-如果当前 GitHub App 安装只授权部分仓库，UI 必须明确写“已授权仓库”，不能伪装成账户全部仓库。
+若 GitHub 权限或组织策略使某些仓库不可见，UI 必须明确显示“当前授权可见范围”，不能伪造或缓存成“账户全部仓库”。
 
 ## 4. 仓库枚举
 
@@ -114,6 +122,14 @@ capabilities
 
 第一阶段按 repository-level runner 设计。
 
+当前主机在每个 repo 内使用可恢复识别的 runner name，例如：
+
+```text
+grc-<sanitized-hostname>-<machine-id-short>
+```
+
+runner name 在 repository scope 内识别当前主机，本地 registry 额外保存 `repo id → runner id/name/instance path`。本地 registry 丢失时，允许通过 runner name + 当前 machine_id 进行恢复扫描，但不得仅按 hostname 猜测。
+
 同一主机可以服务多个 repo，但每个 repo 必须有独立实例目录：
 
 ```text
@@ -138,6 +154,13 @@ Busy
 Stopping
 Error
 ```
+
+AssignmentState 与 runner service 的首版语义：
+
+- `Active`：runner service 运行；按已批准角色接任务。
+- `Standby`：保留注册和 desired roles，但停止 runner service，因此不接新任务。
+- `Disabled`：停止 runner service，并从 GitHub runner 上移除本控制器拥有的 `grc-role-*` labels；注册仍可保留。
+- `Quarantined`：停止 runner、移除本控制器角色 labels，并在本地设置安全锁；必须由用户明确解除隔离后才能再次 Active。
 
 任何失败必须进入可恢复状态，并在 UI 呈现错误原因。
 
