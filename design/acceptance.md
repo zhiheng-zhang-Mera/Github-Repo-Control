@@ -44,11 +44,20 @@
 
 ## E. 角色
 
+- [ ] Repository Detail 显示当前版本全部 Role Catalog 可选角色。
+- [ ] 角色只能通过 checkbox/toggle/list selection 选择，不存在自由文本角色输入框。
+- [ ] 用户不能直接输入或编辑 `grc-role-*` label。
 - [ ] 支持多选。
+- [ ] 选择 `dev` 后，`verify` 立即不可选并显示冲突原因。
+- [ ] 选择 `repair` 后，`verify` 立即不可选并显示冲突原因。
+- [ ] 选择 `verify` 后，`dev` 与 `repair` 立即不可选。
+- [ ] 取消冲突来源角色后，相应角色重新可选。
+- [ ] UI 的正常交互路径不能构造出硬冲突角色集合。
 - [ ] `general + ci` 可应用。
 - [ ] `ci + build` 可应用。
-- [ ] `dev + verify` 被硬拒绝。
-- [ ] `repair + verify` 被硬拒绝。
+- [ ] 即使绕过 UI 直接调用 Core，`dev + verify` 仍被硬拒绝。
+- [ ] 即使绕过 UI 直接调用 Core，`repair + verify` 仍被硬拒绝。
+- [ ] 如果远端已经存在冲突的 GRC labels，界面进入 InvalidRemoteRoleState，要求用户显式修复，不静默改写。
 - [ ] 冲突必须在调用 GitHub 写 API 之前发现。
 - [ ] 角色最终映射为 `grc-role-*` labels。
 - [ ] Apply 不得删除不属于本控制器 namespace 的其它 labels。
@@ -70,8 +79,8 @@
 1. Login 页面。
 2. Repository List 页面。
 3. Repository Detail / Current Host 页面。
-4. Role multi-select。
-5. 冲突提示。
+4. Role Catalog 多选列表（无自由文本输入）。
+5. 冲突角色动态禁用及原因提示。
 6. Apply diff 确认。
 7. Runner 状态。
 8. Audit 页面或可读审计视图。
