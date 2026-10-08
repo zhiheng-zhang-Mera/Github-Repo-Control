@@ -122,6 +122,19 @@ Linux/macOS 暂可提供接口与明确 NotSupported/后续实现，但不得退
 
 ## C5 — Repository Discovery
 
+实现分页读取已授权仓库，并把远端刷新作为明确生命周期，而不是一次性初始化数据。
+
+必须实现：
+
+- `RefreshRepositoriesAsync`（或等价 service contract）。
+- 应用启动恢复有效 session 后自动调用一次。
+- 新登录成功后自动调用一次。
+- UI 手动刷新调用同一 service。
+- 刷新请求支持 cancellation，禁止并发重复刷新造成竞态。
+- 保存 `lastSuccessfulRefreshAt`。
+- 失败时返回可区分的 stale-cache 状态，不得把缓存伪装成 fresh。
+- 成功结果需要处理新增 repo、消失 repo、权限变化。
+
 实现分页读取已授权仓库：
 
 字段至少：
