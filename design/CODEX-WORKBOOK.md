@@ -62,6 +62,7 @@ tests/
 - MachineCapabilities
 - RepositoryRef
 - MachineRole
+- RoleCatalog
 - AssignmentState
 - RunnerAssignment
 - RoleValidationResult
@@ -69,7 +70,23 @@ tests/
 
 角色冲突必须完整编码 `role-model.md` 矩阵。
 
-写参数化单元测试覆盖所有 pair。
+`RoleCatalog` 必须是受控、枚举式的数据源，向 UI 暴露：
+
+- role id
+- display name/key
+- description
+- GitHub label
+- capability constraints
+- compatibility information / validation hook
+
+禁止提供“解析任意字符串为新角色”的隐式扩展路径。未知 role 必须被拒绝。
+
+写参数化单元测试覆盖所有 pair，并增加：
+
+- 当前合法选择集合 → 可选/不可选角色集合。
+- 未知角色拒绝。
+- API 绕过 UI 时冲突组合仍拒绝。
+- 远端冲突 labels → InvalidRemoteRoleState。
 
 验收：Dev+Verify、Repair+Verify 必须失败；General+CI、CI+Build 必须通过。
 
@@ -195,6 +212,8 @@ runners/<owner>__<repo>/
 验收：两个测试 repo 的实例目录互相独立。
 
 ## C8 — Assignment Service
+
+Assignment Service 只接受 `MachineRole` / Role Catalog 中的已知枚举值，不接受 raw string 角色或 raw label 作为 desired role 输入。
 
 实现用户 Apply 所需业务事务：
 
