@@ -65,6 +65,27 @@ Windows 为首要验收平台；接口层必须保留 Linux/macOS 实现边界�
 
 ## 4. 仓库枚举
 
+### 4.1 刷新规则
+
+仓库列表采用 **启动强制刷新 + 用户手动刷新**：
+
+1. 每次应用启动并确认已有有效登录态后，必须主动调用 GitHub API 重新分页拉取 repository 列表。
+2. 每次新登录成功后，必须立即拉取一次完整 repository 列表。
+3. Repository List 页面必须提供显式“刷新”按钮；用户点击后重新从 GitHub 拉取，而不是只重读本地缓存。
+4. 刷新期间保留明确 loading / refreshing 状态。
+5. 如果刷新失败：
+   - 可以继续显示上一次成功结果作为 `stale cache`；
+   - 必须显著标注“列表可能已过期”和最后成功刷新时间；
+   - 不得把缓存标记成“最新”。
+6. 刷新成功后，以 GitHub 返回结果整体协调本地视图：新增 repo 加入、失去权限/删除的 repo 从当前列表移除或明确标记不可访问。
+7. 任何缓存只用于加快首屏，不是权限或项目存在性的权威来源。
+
+需要保存：
+
+- `last_successful_repository_refresh_at`
+- 当前刷新状态
+- 可选的最近一次 repository metadata cache
+
 主界面显示：
 
 - owner/name
