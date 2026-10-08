@@ -27,13 +27,16 @@ Utopia 已冻结，不作为施工依赖、测试仓库或修改目标；新项�
 
 ```text
 C0：工程骨架 + 共享契约 + fake（一个明确提交）
-   ├── Codex：C1 → C2 → C3 → C4 → C5
+   ├── Codex：C1 → C2 → C3 → C4 → C5 → C6 的交接材料
    └── DeepSeek：D0 → D1 → D2（只消费共享契约与 fake）
-核心交付 C6 + UI 交付 D2
-   → D3：明确 integration SHA，双方各复检未主导部分
+核心交接材料 + UI 交付 D2
+   → D3：形成明确 integration SHA，DeepSeek 复核核心
+   → C6 的集成后复核：Codex 在该 SHA 上复核 UI
    → D4：真实 Windows 桌面 + GitHub Runner 作业端到端
    → 一次集中修补 + 定向确认 → COMPLETE 或如实 PARTIAL/BLOCKED
 ```
+
+**C6 包含“集成前交接”和“集成后复核”两个时点，不是必须整体完成才可进入 D3 的前置任务。** D3 所称“C6 核心交付”只要求 C5 成果及 C6 第一项的契约/源码/测试/限制材料；不能等待 C6 后续的 UI 复核或最终报告。反过来，Codex 的 UI 复核等待 D3 产出的 integration SHA，不等待 D4 完成。这个先后关系同时约束两份施工书，避免循环依赖。
 
 先交付契约，不等待所有后端完成才让 UI 开始；UI 也不能复制另一套后端解阻。C0 后 App 归 DeepSeek，Core/GitHub/Runner/Security 归 Codex；共享契约改动由双方显式同步。角色名称不绑定真实模型能力，单人顺序执行同样允许，但不能自称独立复核。
 
