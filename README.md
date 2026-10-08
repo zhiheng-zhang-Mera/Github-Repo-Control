@@ -1,120 +1,64 @@
 # Github-Repo-Control
 
-Github-Repo-Control 是一个独立于任何业务项目的 **GitHub 全局机器控制器**。
+Github-Repo-Control（GRC）是独立的 **GitHub 仓库 × 当前主机 Runner 管理器**，不是研发平台、调度器或项目治理系统。
 
-它不属于 Utopia、PCF、Digital-City 或任何被管理仓库，也不接受这些仓库的反向控制。它的职责是：在用户登录 GitHub 后，列出当前账户授权范围内的仓库，并允许用户从桌面应用中手动管理“当前主机”在每个仓库中的 self-hosted runner 注册与角色。
+登录 GitHub 后，用户查看当前授权范围内的仓库，手动管理当前主机在各仓库中的 Runner 注册、运行状态与预定义角色。它不属于 Utopia、PCF、Digital-City，也不接受被管理项目的反向命令。
 
-## 第一阶段目标
+## 范围与当前阶段
 
-第一阶段只做一条完整、可验证的主链。仓库列表以 GitHub 当前远端状态为真值：每次打开应用必须主动刷新一次，用户也可以随时手动刷新；本地缓存不得被当作最新列表。
+- **设计版本：GRC-MANAGER-V1.1（2026-10-08）。** 状态仍为 `DESIGN / READY_FOR_IMPLEMENTATION`，不代表桌面程序已经实现或通过验收。
+- Utopia 此后冻结；本项目的施工、验证与展示不得修改 Utopia，也不要求 Utopia 接入或继续更新。
+- 新孵化项目创建后，通过“刷新发现 → 选择仓库 → 配置当前主机 → 确认应用”接入。没有独立的项目准入审批、创建阻断或生命周期引擎。
+- GRC 不拦截普通 Git clone/push，不授予 GitHub 仓库写权限，不决定谁可以开发。未注册 Runner 的普通电脑仍可正常开发。
+- 第一阶段：GitHub.com、单个当前登录账户、当前 Windows 主机、repository-level Runner；保留 Linux/macOS 接口，不宣称已支持。
 
-1. 启动桌面应用。
-2. 登录 GitHub。
-3. 每次启动应用都重新向 GitHub 拉取当前账户授权范围内的全部仓库；仓库列表页同时提供手动“刷新”按钮。
-4. 选择一个仓库。
-5. 检测当前主机是否已为该仓库注册 self-hosted runner。
-6. 用户只能从系统提供的完整角色列表中勾选一个或多个兼容角色；不提供自由文本、手动输入角色名或手填 runner label 的入口。
-7. 角色选择器实时依据冲突矩阵禁用不兼容选项，使 UI 编辑状态本身不能形成角色冲突；Core 再做最终冲突校验。
-8. 用户确认后才应用变更。
-9. 将角色同步为 GitHub runner custom labels，并展示最终状态。
-10. 所有注册、取消注册、角色变更都写入本地审计日志。
-
-## 项目定位
-
-本项目是账户/机器级基础设施控制面，而不是业务项目的一部分。
+## 一条主链
 
 ```text
-GitHub Account
-      │
-      ▼
-Github-Repo-Control
-      │
-      ├── Repo A ── Current Host: CI + Build
-      ├── Repo B ── Current Host: General
-      └── Repo C ── Current Host: Verify
-
-被管理仓库不能反向调用或修改 Github-Repo-Control。
+启动 / 登录 GitHub
+  → 启动时完整分页刷新仓库（也可随时手动刷新）
+  → 选择仓库，读取当前主机与 Runner 实况
+  → 从完整角色列表勾选兼容角色
+  → 预览变更，用户确认
+  → 注册或更新当前主机 Runner
+  → 回读 GitHub + 本机状态，记录脱敏结果
 ```
 
-## 桌面技术方向
+新发现仓库默认未托管，不批量注册、不静默启动。列表刷新失败可以显示旧缓存，但必须标记过期；部分分页结果不能冒充全量最新列表。Runner 细节按需读取，不在启动时为每个仓库重复调用管理 API。
 
-首版采用跨平台桌面架构：
+## 角色与状态
 
-- .NET LTS
-- Avalonia UI
-- MVVM
-- GitHub REST API
-- 本地安全凭据存储
-- 本地结构化审计日志
-- Windows 为第一验收平台，同时保持 Linux/macOS 可移植性
+角色属于 `当前主机 × 仓库`，支持 `general / ci / build / dev / verify / repair / platform-test`。全部通过 checkbox/toggle 列表选择；禁止自由文本角色、任意 label 编辑或隐藏的自定义角色入口。
 
-依赖版本由施工时选择当前稳定版本并锁定，不在设计文档中硬编码短生命周期版本号。
+`verify` 与 `dev`、`repair` 硬冲突：冲突项保留显示但立即禁用，Core 再验证。其他既有兼容组合保留，例如 `general + ci`、`ci + build`。运行状态 `Active / Standby / Disabled / Quarantined` 单独设置，不算角色；隔离仅是停止与本地安全锁，不包含威胁检测平台。
 
-## 角色模型
+**角色标签只是作业路由元数据，不是安全权限或独立验证证明。** `verify` 不保证物理主机、模型或任务历史独立；GRC 不追踪这些研究语义。移除标签不等于停止接单，停用必须确认本机 Runner 已停止。详见 [角色模型](design/role-model.md)。
 
-角色属于 **“当前主机 × 仓库”**，而不是主机的全局唯一身份。
+## 日常使用边界
 
-首版预置：
+- 忙碌时拒绝普通角色切换、停止和注销；用户可另行确认紧急停止，界面明确任务可能中断。首版不做排空队列或自动等待后执行。
+- 关窗口或退出 GitHub 登录，不会默默停止已批准运行的 Runner；退出登录会清除控制器登录态。停止是独立操作，离线时也可停止已核实归属的本机 Runner。
+- 首版服务启动类型为手动；重启电脑或重新打开 GRC 不自动恢复运行，需用户再次启动。
+- 不自动编辑 workflow。详情页只提供可复制的 `runs-on` 片段和 GitHub 设置入口；是否采用由各项目决定。
 
-- `general`：一般机器，可承担项目定义的普通 self-hosted 工作。
-- `ci`：CI 测试。
-- `build`：构建。
-- `dev`：开发/施工。
-- `verify`：独立验证。
-- `repair`：修补。
-- `platform-test`：平台专项测试。
+## 最低安全要求
 
-角色通过系统预定义列表进行多选，不允许用户手工输入角色或直接填写 `grc-role-*` label。允许多角色并存，例如：
+控制器凭据进入系统安全存储，不进入仓库、Runner 工作区、日志或 Runner 环境变量。Runner 使用不同于控制器用户的低权限执行身份；目录分开仅避免配置覆盖，不等于安全沙箱。权限边界未建立时只能浏览，不能启用执行。
 
-```text
-general + ci
-ci + build
-general + platform-test
-```
+首版只支持受信任工作流。公共仓库默认禁止启用自托管执行；只有用户在外部准备专用执行主机或隔离虚拟机、明确确认用途和风险，并通过本机身份/ACL 检查后，才允许显式启用。GRC 不创建虚拟机，也不认证工作流安全；专用环境声明是用户声明，不是假装自动验证。私人仓库同样不能免除执行身份隔离。
 
-但硬冲突组合不能在角色选择器中被同时选中。例如选中 `verify` 后，`dev` 与 `repair` 立即变为不可选；反向亦然。Core 仍必须拒绝任何绕过 UI 传入的冲突组合。例如同一仓库中，为保持独立验证语义：
+## 桌面实现与施工入口
 
-```text
-verify × dev       = conflict
-verify × repair    = conflict
-```
+采用 .NET LTS + Avalonia + MVVM + GitHub REST API。依赖与 Runner 版本在施工时选定、锁定并记录。界面只需登录、仓库列表、仓库详情、审计视图，账户设置用轻量对话框。
 
-更完整的兼容矩阵见 [design/role-model.md](design/role-model.md)。
+| 文档 | 内容 |
+|---|---|
+| [设计索引](design/README.md) | 范围、施工次序、修订说明 |
+| [架构](design/architecture.md) | 登录、状态、生命周期、安全、故障恢复 |
+| [角色模型](design/role-model.md) | 完整目录、冲突矩阵、标签语义 |
+| [共享契约](design/shared-contracts.md) | 核心/UI 接口与统一错误语义 |
+| [验收清单](design/acceptance.md) | 可核查的完成标准 |
+| [Codex 施工书](design/CODEX-WORKBOOK.md) | 核心、GitHub 与本机 Runner |
+| [DeepSeek 施工书](design/DEEPSEEK-WORKBOOK.md) | UI、集成与交叉验证 |
 
-> `standby`、`disabled`、`quarantined` 属于运行状态，不作为可叠加角色。
-
-## 安全边界
-
-以下约束为硬规则：
-
-- 被管理仓库内容视为不可信输入。
-- 不执行仓库中的脚本、配置或二进制文件来决定控制器权限。
-- 不允许 GitHub Actions workflow 调用控制器完成提权或角色切换。
-- 所有角色修改必须由本机用户明确触发。
-- GitHub token 不得写入仓库、配置文件或日志。
-- 凭据必须进入系统安全凭据存储。
-- runner 实例与控制器凭据分离。
-- 每个 repository-level runner 使用独立实例目录，避免多仓库配置互相覆盖。
-- 控制器必须记录审计日志，但日志中不得记录 access token、registration token 等秘密。
-
-## 目录
-
-```text
-Github-Repo-Control/
-├── README.md
-└── design/
-    ├── README.md
-    ├── architecture.md
-    ├── role-model.md
-    ├── acceptance.md
-    ├── CODEX-WORKBOOK.md
-    └── DEEPSEEK-WORKBOOK.md
-```
-
-当前 `design/` 为施工前的规范基线。Codex 与 DeepSeek 的任务必须以其中的共享契约为准，不得自行放宽安全边界或修改角色冲突语义。
-
-## 当前阶段
-
-状态：**DESIGN / READY_FOR_IMPLEMENTATION**
-
-下一步由 Codex 和 DeepSeek 按 `design/` 中的施工书实施，完成后再进入独立验收与桌面打包阶段。
+不开发远程控机、全局算力调度、多账户并行、GitHub 权限治理、自动 PR/合并、云端回退、账单优化、项目创建向导、插件市场或 Utopia 集成。

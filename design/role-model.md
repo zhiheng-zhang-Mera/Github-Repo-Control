@@ -1,195 +1,72 @@
 # 角色与冲突模型
 
-## 1. 基本原则
+**GRC-MANAGER-V1.1 · 2026-10-08**
 
-Role 是：
+## 一、角色是什么
 
-```text
-CurrentMachine × Repository → Set<Role>
-```
+`CurrentMachine × Repository → Set<MachineRole>`，账户是管理会话，不改变同一物理主机的含义。平台能力、期望运行状态、GitHub 观测状态另存，不能都塞进角色。
 
-不是：
+**标签是路由声明，不是授权、执行隔离或验证独立性。** GRC 不禁止普通开发，不判定模型或任务级审查关系；同机从 Dev 切换成 Verify 不会抹除先前开发事实。历史角色变更写审计，但项目自行决定独立验证资格。
 
-```text
-CurrentMachine → OneRole
-```
+## 二、固定 Role Catalog
 
-因此同一台机器可以：
+| Enum | 中文名 | GitHub label | 含义 |
+|---|---|---|---|
+| General | 一般任务 | `grc-role-general` | 普通 self-hosted 作业；不是“未注册”的别名 |
+| CI | CI 测试 | `grc-role-ci` | 常规自动测试 |
+| Build | 构建 | `grc-role-build` | 构建/打包 |
+| Dev | 开发 | `grc-role-dev` | 声明为开发类作业用途 |
+| Verify | 验证 | `grc-role-verify` | 声明为验证类用途，不认证独立性 |
+| Repair | 修补 | `grc-role-repair` | 声明为修补类作业用途 |
+| PlatformTest | 平台测试 | `grc-role-platform-test` | 当前真实平台上的专项测试 |
 
-```text
-Repo A: general + ci
-Repo B: build
-Repo C: verify
-```
+未注册的普通电脑用 NotRegistered 表示，不必勾 General。七项必须始终完整显示；所有可编辑角色来自 Core Catalog，不允许手工输入、Add custom role、raw label 编辑、命令行/配置隐式添加角色。未知 enum 拒绝。
 
-## 2. 首版角色
+PlatformTest 不代表拥有 Android/iOS SDK 或某型号 GPU。首版仅检查真实 OS/arch，显示能力描述；不探测或自动安装 SDK，也不伪造能力标签。
 
-角色集合由应用内置的 Role Catalog 提供。**用户不得手工输入角色名、自定义字符串或直接编辑 `grc-role-*` label。**
+## 三、完整兼容矩阵
 
-Repository Detail 必须把当前版本所有可选角色完整展示为 checkbox/toggle/list item。未来新增角色时，由版本升级扩充 Role Catalog，而不是给用户提供自由文本输入框。
+| A / B | General | CI | Build | Dev | Verify | Repair | PlatformTest |
+|---|---|---|---|---|---|---|---|
+| General | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
+| CI | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
+| Build | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
+| Dev | 允许 | 允许 | 允许 | 允许 | 冲突 | 允许 | 允许 |
+| Verify | 允许 | 允许 | 允许 | 冲突 | 允许 | 冲突 | 允许 |
+| Repair | 允许 | 允许 | 允许 | 允许 | 冲突 | 允许 | 允许 |
+| PlatformTest | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 
-| Role | Label | 含义 |
-|---|---|---|
-| General | `grc-role-general` | 普通 self-hosted 工作节点 |
-| CI | `grc-role-ci` | CI/自动测试 |
-| Build | `grc-role-build` | 构建/打包 |
-| Dev | `grc-role-dev` | 开发/施工 |
-| Verify | `grc-role-verify` | 独立验证 |
-| Repair | `grc-role-repair` | 修补 |
-| Platform Test | `grc-role-platform-test` | 当前平台专项测试 |
+唯一角色硬冲突为 Verify 与 Dev、Repair；不增加未获要求的新角色。保留 General+CI、CI+Build、CI+Verify 等组合。全部 128 个角色子集均可枚举测试：按纯角色冲突判定为 80 个兼容、48 个不兼容；运行状态/权限/安全门槛另测，不能混计。
 
-## 3. 状态不是角色
+## 四、编辑器行为
 
-以下使用单独 AssignmentState，不进入多选 Role：
+选择 Dev 或 Repair 后，Verify 立即 disabled 并说明原因；选择 Verify 后 Dev、Repair 同样禁用。取消冲突来源后恢复可选；不隐藏选项、不自动取消已选角色替用户决策。
 
-- Active
-- Standby
-- Disabled
-- Quarantined
+每次编辑立即调用纯函数验证；Preview、Apply 再验证。远端有已知冲突组合时标 `InvalidRemoteRoleState`，与合法草案分区显示，允许用户重新选择合法组合修复；不得把冲突实况写成“合法选中项”。修复要先停止 Runner，再移除冲突旧标签，确认后添加新标签。
 
-规则：
+未知 `grc-role-*` 标 `UnsupportedPolicy`：显示但不可编辑或删除，不用旧版本规则猜测；仍允许本地停止。外部普通 custom labels 只读，不会成为可选角色。匹配大小写不敏感，输出标签使用目录中小写形式。
 
-- Active：按角色接任务。
-- Standby：保留注册，但不应接新任务。
-- Disabled：本 repo 的当前主机 runner 停用。
-- Quarantined：安全隔离；优先级最高。
+## 五、期望状态与不变量
 
-非 Active 状态不得通过偷偷保留 active role label 来继续接单。
+| DesiredState | 本机要求 | 已知 GRC 标签 | 说明 |
+|---|---|---|---|
+| Active | 允许并请求运行；实际成功须双侧观测 | 与合法 DesiredRoles 一致且非空 | 不能只改 UI 就称已启用 |
+| Standby | 确认停止 | 可保留此前已批准集合 | 不接单靠停止，不靠删标签 |
+| Disabled | 确认停止 | 移除本版本已知 GRC 标签 | DesiredRoles 可作为下次草案保留 |
+| Quarantined | 确认停止并保存安全锁 | 同 Disabled | 需用户解锁，不自动识别威胁 |
 
-## 4. 兼容矩阵
+所有状态下保存的 DesiredRoles 都必须合法；不能因 Disabled 就保存 Dev+Verify。已知非法/未知远端实况单独记录。Active + 空集合拒绝；非 Active 可空。已解除锁不代表自动 Active。
 
-符号：
+执行顺序先处理安全锁与停止需求，再校验角色、能力、权限、归属及新鲜度；不是用某个状态跳过其它校验。紧急停止是独立减权操作，不要求远端角色合法或登录有效，但本机实例归属必须核实。
 
-- ✅ 允许
-- ⚠️ 允许但 UI 提示
-- ❌ 硬冲突
+## 六、纯函数契约
 
-| A \ B | General | CI | Build | Dev | Verify | Repair | Platform |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| General | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| CI | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Build | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Dev | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Verify | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Repair | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Platform | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+定义位于 Core，签名及类型见 [shared-contracts.md](shared-contracts.md)：
 
-### 为什么 Verify 与 Dev/Repair 冲突
+- `RoleValidationResult Validate(IReadOnlySet<MachineRole> roles, DesiredState state, MachineCapabilities capabilities)`。
+- `IReadOnlyList<RoleChoice> GetChoices(IReadOnlySet<MachineRole> currentRoles)`。
+- Catalog 提供 id、中文名、说明、固定标签；RoleChoice 提供选中/可选/原因。
 
-这里的 Verify 定义为“独立验证角色”。同一 repo 上同一主机如果同时声明开发/修补与独立验证，会破坏角色语义，因此硬拒绝。
+调用者不能偷偷规范化掉冲突选项让验证通过。传入集合天然去重；边界反序列化仍须拒绝未知值，不把数值溢出当 enum。
 
-如果未来需要“普通测试但不要求独立性”，应使用 CI / Platform Test，而不是降低 Verify 的约束。
-
-## 5. 规则优先级
-
-```text
-Quarantined
-  > Disabled
-  > Standby
-  > Hard Conflict
-  > Capability Constraint
-  > Warning
-  > Allowed
-```
-
-只要命中更高优先级规则，后面的允许项不能覆盖它。
-
-## 6. 角色选择器行为
-
-UI 中的角色集合在任何时刻都必须保持合法，不能先允许形成硬冲突再等待 Apply 时阻止。
-
-规则：
-
-1. 所有角色来自 Role Catalog。
-2. 用户选中一个角色后，RoleConflictEngine 立即计算与当前选择集合不兼容的角色。
-3. 硬冲突角色在 UI 中变为 disabled / unavailable，并显示原因。
-4. 如果取消造成约束的角色，被禁用选项应重新变为可选。
-5. UI 不得“自动取消另一个已选角色”来替用户决定；如果一个操作会使既有合法集合变非法，应拒绝该操作并解释原因。
-6. 任何自由文本 role 输入框、custom label 输入框、把 GitHub label 当作角色编辑入口的设计均禁止。
-7. 远端若因旧版本、人工 GitHub 修改或外部异常已经存在冲突的 `grc-role-*` labels，应进入 `InvalidRemoteRoleState`：
-   - 明确展示异常；
-   - 不把该冲突集合视为合法当前选择；
-   - 要求用户从 Role Catalog 重新选择一个合法集合后才能 Apply 修复；
-   - 不得静默任选一个角色删除。
-
-示例：
-
-```text
-选择 Dev
-→ Verify disabled: 与 Dev 冲突
-
-选择 Repair
-→ Verify disabled: 与 Repair 冲突
-
-选择 Verify
-→ Dev disabled
-→ Repair disabled
-```
-
-## 7. 冲突引擎要求
-
-冲突判断必须实现为纯函数，禁止把规则散落在 UI click handler 中。
-
-建议接口：
-
-```csharp
-RoleValidationResult Validate(
-    IReadOnlySet<MachineRole> desiredRoles,
-    AssignmentState desiredState,
-    MachineCapabilities capabilities);
-```
-
-返回：
-
-- IsValid
-- HardConflicts[]
-- Warnings[]
-- NormalizedRoles[]
-
-UI 和 GitHub adapter 只能消费验证结果，不得自行重新解释冲突。
-
-## 8. Apply 前检查
-
-必须验证：
-
-1. role enum 全部已知。
-2. 没有重复。
-3. 没有硬冲突。
-4. Platform Test 与当前 OS/capability 一致。
-5. 非 Active 状态不能产生 active runner eligibility。
-6. Apply diff 只修改 `grc-role-*` labels。
-7. 最新远端状态与用户开始编辑时相比若已变化，必须提示刷新/重新确认，不能静默覆盖。
-
-## 9. 多角色示例
-
-允许：
-
-```text
-General + CI
-CI + Build
-Build + Dev
-CI + Verify
-General + Platform Test
-CI + Build + Platform Test
-```
-
-拒绝：
-
-```text
-Dev + Verify
-Repair + Verify
-Dev + Repair + Verify
-```
-
-## 10. 未来扩展
-
-新增 role 必须同时提交：
-
-- role 定义
-- label
-- 与全部现有 role 的兼容关系
-- capability 约束
-- 单元测试
-- UI 文案
-
-没有矩阵项的新 role 不得上线。
+新增角色需更新目录、完整矩阵、子集测试及 UI 文案；没有新需求就不扩充。

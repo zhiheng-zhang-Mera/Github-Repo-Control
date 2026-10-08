@@ -1,307 +1,76 @@
-# DeepSeek 施工书 — Desktop UI / UX / Independent Verification
+# DeepSeek 施工书 — 轻量桌面 UI / 集成验证
 
-## 任务定位
+> 执行者按任务逐项施工；使用可用的 executing-plans 或等价流程。此文件是施工计划，不是已完成报告。
 
-DeepSeek 负责桌面 UI、交互状态机、角色编辑体验，并对 Codex 核心实现做独立验证。
+**Goal：** 用最少页面管理当前主机的仓库 Runner 与角色，直观呈现真实状态和失败。
 
-原则：
+**Architecture：** Avalonia/MVVM 消费 Core 的共享契约，不复制 GitHub、Runner 或冲突逻辑。C0 契约交付后可用明确 Demo fake 并行开发。
 
-- 不复制一套 GitHub/runner 核心逻辑到 UI。
-- 不通过 UI 绕过 RoleConflictEngine。
-- 不修改安全规则来让界面“更顺”。
-- Codex 核心尚未就绪时使用 fake service 开发，不直接重写 backend。
+**Tech Stack：** .NET LTS、Avalonia、MVVM；使用 C0 锁定版本，不另起框架。
 
-## 分支
+**Spec：** [architecture.md](architecture.md)、[role-model.md](role-model.md)、[shared-contracts.md](shared-contracts.md)、[acceptance.md](acceptance.md)。
 
-建议：
+## 全局约束与输入
 
-```text
-feat/deepseek-desktop-phase1
-```
+分支建议 `feat/deepseek-desktop-phase1`，从 C0 contract SHA 开始。记录实际 host/model/base_sha/spec_sha；App 与 App.Tests 归本线，核心四工程归 Codex。Core 交付前用 fake，但不把 fake 后端重新写进 UI。
 
-最终通过明确 integration commit/PR 合并。
+仅四个主视图：Login、Repositories、RepositoryDetail、Audit；Account Settings 为对话框。禁止项目创建/准入向导、全局调度图、批量自动启用和 Utopia 集成。英文 identifier 保留，界面中文为主。
 
-## 输入
+复核重点：列表缓存不能冒充最新；角色互斥不能只靠 UI；退出不暗停/暗留登录凭据；部分失败不能变成功；本地停止与远端 offline 必须区分。对应测试分别由 D1/D2/D3 承担。
 
-完整阅读：
+## D0 — 页面壳与契约绑定
 
-- `README.md`
-- `design/README.md`
-- `design/architecture.md`
-- `design/role-model.md`
-- `design/acceptance.md`
-- Codex 暴露的 service contract
+文件：`App/Views/{LoginView,RepositoriesView,RepositoryDetailView,AuditView}.axaml`、对应 `ViewModels/`；测试 `App.Tests/NavigationTests.cs`。
 
-## D0 — UI 信息架构
+输入 C0 的 IAccountService/IRepositoryService/IAssignmentService/IAuditReader/IRolePolicy；输出可启动页面与依赖注入绑定。不得直接接触 OAuth token、HTTP endpoint 或进程参数。
 
-至少设计以下页面：
+- [ ] 建最小导航，验证未登录只展示登录/可解释的离线状态，不混入另一个账户的 repo 数据。
+- [ ] 接 C0 fake，明确 Demo 标记；生产构建无真实配置时显示 ConfigurationRequired，不自动伪造仓库。
+- [ ] 运行 `dotnet test tests/GithubRepoControl.App.Tests --filter FullyQualifiedName~NavigationTests`；截图只证明 UI，不当后端验收。
 
-```text
-Login
-  ↓
-Repositories
-  ↓
-Repository Detail
-  ├── Current Host
-  ├── Runner State
-  ├── Roles
-  └── Apply Preview
+## D1 — 登录与仓库列表
 
-Audit
-Settings / Account
-```
+文件：`App/ViewModels/{LoginViewModel,RepositoriesViewModel,AccountDialogViewModel}.cs`，对应 Views；测试 `App.Tests/{LoginViewModelTests,RepositoryListTests}.cs`。
 
-第一阶段禁止加入与主链无关的大型 dashboard。
+- [ ] RED：`Startup_RequestsRemoteRefresh`、`RefreshFailure_ShowsStaleTimestamp`、`PartialFirstLoad_IsNotCompleteList`、`OldAccountResult_DoesNotRender`、`Logout_WarnsRunnerContinues`。
+- [ ] 使用 DeviceFlowProgress 展示 user_code、固定官方验证入口、等待/取消/拒绝/到期；不显示 token。
+- [ ] 实现每次启动、新登录与手动刷新；loading 不整页闪空、无并发刷新；完整列表展示授权范围、owner/name、可见性、权限和带时间的 Runner 摘要。
+- [ ] 搜索及 owner/可见性/已注册/角色过滤保持轻量；新项目发现后未托管，不自动申请 admin API 或注册。
+- [ ] 运行 `dotnet test tests/GithubRepoControl.App.Tests --filter "FullyQualifiedName~LoginViewModelTests|FullyQualifiedName~RepositoryListTests"`，保留 RED/GREEN 并提交。
 
-## D1 — Login 页面
+## D2 — 详情、角色、确认、错误和审计
 
-包含：
+文件：`App/ViewModels/{RepositoryDetailViewModel,ChangePreviewViewModel,AuditViewModel}.cs`，对应 Views/Dialogs；测试 `App.Tests/{RolePickerTests,ChangePreviewTests,FailurePresentationTests}.cs`。
 
-- 应用定位。
-- “登录 GitHub”按钮。
-- Device Flow user code。
-- 打开浏览器/复制验证码。
-- waiting / success / denied / expired 状态。
-- 当前账户。
-- logout。
+详情主区只放仓库、当前主机、实际 Runner 状态、七角色、启动/待机/停用和预览。Quarantined、注销、紧急停止放“更多操作”，不建设安全仪表盘。
 
-不得显示 access token。
+- [ ] RED：`AllSevenRoles_VisibleWithoutFreeText`、`DevDisablesVerify_ReverseAlsoWorks`、`UnknownRemoteRole_IsNotEditable`、`EditInvalidatesPreview`、`PartialApply_IsNeverGreenSuccess`、`RemoteOffline_LocalRunning_ShowsWarning`。
+- [ ] 角色直接从 IRolePolicy 渲染，禁用项解释冲突，取消后恢复；远端非法/未知集合与合法编辑草案分区。
+- [ ] Preview 展示身份、Add/Remove、停机/注册影响及安全前提；Confirm 才 Apply。字段变更/换账号/StaleState 需要重新预览。
+- [ ] Busy 不自动排队；紧急停止/注销独立二次确认，明确可能中断。无网络仍保留已核实实例的本地停止入口。
+- [ ] 展示 Desired 与 Observed 差异、未完成步骤及“核对状态”入口；Reconcile 只读，不偷偷重试写。用户可以取消操作，界面不宣称已撤销服务端变化。
+- [ ] 公共仓库启用提示默认拒绝；外部专用环境和用户确认作为前提，显示 OperatorAttested，不给普通桌面一个万能“忽略”按钮。
+- [ ] 提供从枚举与真实 OS/arch 生成的 runs-on 复制片段、官方 GitHub 设置链接；绝不提交 workflow。审计仅显示/复制脱敏结构化信息。
+- [ ] 验证键盘、Tab 顺序、高 DPI、窗口缩放及长错误；运行 `dotnet test tests/GithubRepoControl.App.Tests`，提交 UI 精确 SHA。
 
-## D2 — Repository List
+## D3 — 一次整合与交叉验证
 
-刷新行为是第一阶段硬要求：
+输入：C6 核心交付、D2 UI 交付；输出一个明确 integration SHA。使用独立 worktree 避免常驻旧构建污染；不自行改共享规范躲开错误。
 
-- 打开应用并恢复登录态后，列表自动执行一次 GitHub 远端刷新。
-- 新登录完成后立即刷新。
-- 页面提供明显但不过度突出的“刷新”按钮。
-- 手动刷新期间显示 refreshing 状态，列表不应整页闪空。
-- 防止用户连续点击制造多个并发 refresh。
-- 刷新失败时，如果存在旧缓存，可以继续展示，但必须显示：
-  - “数据可能已过期”
-  - 最后成功刷新时间
-  - 重试入口
-- 刷新成功后清除 stale 标记。
-- 不得把“重新筛选当前列表”冒充“刷新”。
+- [ ] 合入两线，运行 `dotnet restore GithubRepoControl.sln --locked-mode`、`dotnet build GithubRepoControl.sln --no-restore`、`dotnet test GithubRepoControl.sln --no-build`。构建必须基于同一树，不能分别通过后相加。
+- [ ] DeepSeek 复核未主导的核心：128 角色子集、服务归属/目录穿越、非 GRC 标签保护、stale/partial/crash 恢复、logout 旧 token、权限不足、busy 竞态与凭据 ACL。
+- [ ] 请 Codex 按 C6 复核未主导的 UI；同机不同模型可用，记录事实，不称作跨物理主机验证。没有第二执行者就记自检并保留独立复核 NOT_RUN。
+- [ ] 报告用例级结果和可复现缺陷，必要修补交给明确负责者；不按每个小提交无限往返复验，也不覆盖早期失败日志。
 
-显示：
+## D4 — 真实 E2E 与打包
 
-- owner/name
-- public/private
-- archived
-- 当前主机 runner 状态
-- 当前角色摘要
-- 权限不足标识
+文件：`evidence/phase1/desktop-e2e.md`、`evidence/phase1/acceptance-report.md`；包放发布产物目录，不把凭据/Runner 工作区提交 Git。
 
-支持：
+- [ ] 在用户授权的一台真实 Windows、两个非 Utopia 测试仓库完成启动→登录→全量刷新→选择仓库→注册→General+CI→预览→应用→双侧核对→重开恢复→改角色→审计→停止/注销。
+- [ ] 用户自行准备最小受信任 workflow；实际 job 返回 runner name、OS 与测试 commit SHA，核对它在当前主机执行。不得仅用 API 标签或桌面截图证明可接单。
+- [ ] 受控展示 busy 拒绝、stale/部分失败恢复、停止后不再执行、退出不暗停和重启不暗启。测试队列由用户取消，不为此增加云端回退或作业调度。
+- [ ] 从 Runner 低权限身份做真实 ACL 探针；缺权限、OAuth 或仓库时记录相关 NOT_RUN/BLOCKED，不换 mock 假装通过。
+- [ ] `dotnet publish src/GithubRepoControl.App -c Release -r win-x64 --self-contained true`；在无开发工具依赖的 Windows 环境启动产物，记录源码 SHA、包 SHA256、实际依赖/Runner 版本和安装步骤。
+- [ ] 按 acceptance A–G 汇总；集中修补后定向重验及必要全套回归。未解决安全/数据损失问题必须 PARTIAL/BLOCKED，不为了限制复验轮次硬签 COMPLETE。
 
-- search
-- owner filter
-- visibility filter
-- registered filter
-- refresh
-
-大量 repo 时不得一次性阻塞 UI thread。
-
-## D3 — Repository Detail
-
-核心布局建议：
-
-```text
-Repository
-Owner / Visibility / Permission
-
-Current Host
-hostname / OS / arch / machine_id-short
-
-Runner
-Registered / Online / Offline / Busy
-
-Roles — All available roles
-[ ] General
-[ ] CI
-[ ] Build
-[ ] Dev
-[ ] Verify
-[ ] Repair
-[ ] Platform Test
-
-State
-Active / Standby / Disabled / Quarantined
-
-[Preview Changes]
-```
-
-角色必须支持多选，但只能从 Codex/Core 提供的 Role Catalog 渲染。
-
-硬要求：
-
-- 不允许 TextBox 输入 role。
-- 不允许“Add custom role”。
-- 不允许用户直接编辑 GitHub label。
-- 不要在 UI 里复制一份独立角色清单作为业务真值；显示项来自 Role Catalog/service contract。
-- 当前版本所有可选角色必须完整显示，不能藏在需要手动键入名称才能找到的入口。
-
-## D4 — 冲突交互
-
-**正常 UI 不允许冲突组合实际形成。**
-
-DeepSeek 必须从 Core 的 RoleConflictEngine/Role Catalog 获取可选性，而不是自行维护一套冲突规则。
-
-示例：
-
-```text
-用户勾选 Dev
-
-☑ Dev
-☐ Verify   [disabled]
-            与 Dev 冲突：Verify 要求独立验证
-```
-
-反向：
-
-```text
-用户勾选 Verify
-
-☐ Dev      [disabled]
-☑ Verify
-☐ Repair   [disabled]
-```
-
-要求：
-
-- 冲突项继续显示在“所有可选角色”列表中，但置灰/不可点击，不能直接隐藏。
-- disabled 项旁提供简短原因或 tooltip。
-- 取消冲突来源角色后，应立即恢复可选。
-- 不允许自动取消用户已经选中的其它角色来完成新选择。
-- Core 返回 InvalidRemoteRoleState 时，显示“远端存在非法角色组合”，要求用户重新选择合法集合后 Preview/Apply 修复。
-- Apply/Preview 层仍再次验证；UI 禁用不是唯一安全边界。
-
-## D5 — Apply Preview
-
-点击 Apply 前必须展示 diff：
-
-```text
-Utopia / Alien
-
-Add:
-+ grc-role-ci
-+ grc-role-build
-
-Remove:
-- grc-role-general
-
-Runner:
-Registered → Registered
-
-[Cancel] [Confirm]
-```
-
-如果涉及首次注册或 remove runner，必须额外说明影响。
-
-确认后才调用 AssignmentService。
-
-## D6 — Busy / stale / failure
-
-必须处理：
-
-- API loading
-- runner busy
-- remote changed
-- permission denied
-- offline
-- registration failed
-- GitHub rate limit
-- network disconnected
-
-StaleState 必须要求刷新后重新确认。
-
-失败后 UI 不得保留“已成功”的假状态。
-
-## D7 — Audit 视图
-
-至少可查看：
-
-- time
-- repo
-- action
-- role change
-- result
-
-错误详情必须脱敏。
-
-提供 copy sanitized diagnostic，不包含 token。
-
-## D8 — Accessibility / Desktop quality
-
-- 键盘可操作。
-- 合理 tab order。
-- loading 不冻结窗口。
-- 窗口缩放布局不破裂。
-- 高 DPI 可读。
-- destructive action 有二次确认。
-- role label 使用人类可读中文/英文名称，不直接把内部 label 当主要 UI。
-
-根 README 保持中文；应用首版 UI 可中文为主，内部 identifier 用英文。
-
-## D9 — 独立验证 Codex
-
-DeepSeek 不仅做 UI，还必须针对核心做 adversarial review：
-
-1. repo 名含特殊字符是否可 path traversal。
-2. token 是否可能进入 log。
-3. Apply 是否会删除非 GRC labels。
-4. stale remote state 是否被覆盖。
-5. Verify/Dev 冲突是否能通过 UI、ViewModel、AssignmentService 或 API 旁路。
-6. 是否存在隐藏的自由文本/custom role/custom label 入口。
-7. 两 repo runner instance 是否隔离。
-8. 未授权 repo 是否错误调用 admin API。
-9. logout 后旧 token 是否仍可被 service 使用。
-
-发现问题提交明确 bug / fix commit，不要仅写评论。
-
-## D10 — E2E
-
-至少完成真实桌面主链：
-
-```text
-Launch
-→ Login
-→ Repositories loaded
-→ Select repo
-→ Register current host
-→ Select General + CI
-→ Preview
-→ Apply
-→ GitHub confirms labels
-→ Restart app
-→ State restored
-→ Change roles
-→ Audit visible
-```
-
-再完成冲突案例：
-
-```text
-Select Dev
-→ Verify immediately disabled
-→ cannot construct Dev + Verify in UI
-
-Bypass UI in test
-→ Core rejects Dev + Verify before GitHub write
-```
-
-## DeepSeek 终验报告
-
-输出：
-
-```text
-UI implemented:
-E2E evidence:
-Independent bugs found:
-Bugs fixed:
-Remaining blockers:
-Acceptance checklist:
-Final commit SHA:
-```
-
-不得只以截图证明后端成功；runner/label 状态必须有 API 或 GitHub 侧证据。
+最终报告明确：已实现、单测通过、真实 GitHub/Windows 验证、未执行、失败保留、已知限制、最终 SHA。Phase 1 仅为轻量管理器，不暗示第二台实体机、Linux/macOS、项目治理或工作流安全认证完成。
